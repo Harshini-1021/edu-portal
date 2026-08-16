@@ -10,8 +10,8 @@ Built for the *Web Development × Integrated AI* problem statement.
 
 ## Live
 
-- **App:** _pending deploy_
-- **Repo:** _pending publish_
+- **App:** https://edu-portal-harshinis-projects-2e5c8c46.vercel.app
+- **Repo:** https://github.com/Harshini-1021/edu-portal
 
 ## Demo credentials
 
@@ -118,5 +118,13 @@ npm run dev
 
 ## Status
 
-Feature-complete and building clean. Schema, RLS policies, demo accounts and
-seed data are live on Supabase.
+Live and feature-complete. Schema, RLS policies, demo accounts and seed data are
+deployed on Supabase.
+
+Supabase's security advisor reports **no errors and no RLS gaps**. The remaining
+warnings are the six RLS helper functions being executable by signed-in users —
+unavoidable, because a policy expression runs with the querying role's
+privileges, and each helper returns only the caller's own id or a boolean about
+the caller. Anonymous execute has been revoked on all of them, and on the three
+trigger-only functions. One outstanding item needs the Supabase dashboard:
+enabling leaked-password protection (HaveIBeenPwned) under Auth settings.
