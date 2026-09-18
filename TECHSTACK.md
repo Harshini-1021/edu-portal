@@ -18,10 +18,10 @@ cost a deploy and a CORS boundary for nothing.
 
 | Package | Why |
 |---|---|
-| `next` 16 | App Router, server components, route handlers, middleware — one framework for UI and API |
+| `next` 16 | App Router, server components, route handlers, proxy — one framework for UI and API |
 | `react` / `react-dom` 19 | `useActionState` and `useFormStatus` give real pending and error states on every form with no client state library |
 | `@supabase/supabase-js` | Postgres queries and auth from server and browser |
-| `@supabase/ssr` | Cookie-based session handling that works across server components, route handlers and middleware |
+| `@supabase/ssr` | Cookie-based session handling that works across server components, route handlers and the proxy layer |
 | `tailwindcss` 4 | Utility styling; the UI is styled as it is built rather than in a polish pass |
 | `typescript` | Catches shape errors against the database rows before they reach a deploy |
 
@@ -39,7 +39,7 @@ Browser
   ├─ Server Actions ────────────► writes: attendance, marks, courses, enrollments
   │    validated in the action, re-checked by RLS, re-checked by a DB trigger
   │
-  ├─ middleware.ts ─────────────► refreshes the session, redirects by role
+  ├─ proxy.ts ──────────────────► refreshes the session, redirects by role
   │
   └─ POST /api/ai/insight ──────► Gemini gemini-flash-latest
                                     └─ on failure ─► Groq llama-3.3-70b-versatile

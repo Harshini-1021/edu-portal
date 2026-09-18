@@ -2,38 +2,36 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { getProfile } from "@/lib/auth";
+import { recordAudit } from "@/lib/audit";
+import {
+  createCourseInput,
+  enrollStudentInput,
+  assignTeacherInput,
+  parseOrMessage,
+} from "@/lib/schemas";
 
 export type AdminState = { ok: boolean; message: string } | null;
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 export async function createCourse(_prev: AdminState, formData: FormData): Promise<AdminState> {
-  const code = String(formData.get("code") ?? "").trim().toUpperCase();
-  const title = String(formData.get("title") ?? "").trim();
-  const description = String(formData.get("description") ?? "").trim();
-  const schedule = String(formData.get("schedule") ?? "").trim() || "TBD";
-  const teacherId = String(formData.get("teacher_id") ?? "");
-  const credits = Number(formData.get("credits") ?? 3);
+  const parsed = parseOrMessage(createCourseInput, {
+    code: formData.get("code") ?? "",
+    title: formData.get("title") ?? "",
+    description: formData.get("description") ?? "",
+    schedule: String(formData.get("schedule") ?? "").trim() || "TBD",
+    credits: formData.get("credits") ?? 3,
+    teacherId: formData.get("teacher_id") ?? "",
+  });
+  if (!parsed.ok) return { ok: false, message: parsed.message };
 
-  if (!/^[A-Z]{2,4}\d{3}$/.test(code)) {
-    return { ok: false, message: "Course code must look like CS301 or MA201." };
-  }
-  if (title.length < 3 || title.length > 120) {
-    return { ok: false, message: "Give the course a title between 3 and 120 characters." };
-  }
-  if (!Number.isInteger(credits) || credits < 1 || credits > 10) {
-    return { ok: false, message: "Credits must be a whole number between 1 and 10." };
-  }
+  const { code, title, description, schedule, credits, teacherId } = parsed.data;
 
   const supabase = await createClient();
-  const { error } = await supabase.from("edu_courses").insert({
-    code,
-    title,
-    description,
-    schedule,
-    credits,
-    teacher_id: UUID.test(teacherId) ? teacherId : null,
-  });
+  const { data: created, error } = await supabase
+    .from("edu_courses")
+    .insert({ code, title, description, schedule, credits, teacher_id: teacherId })
+    .select("id")
+    .maybeSingle();
 
   if (error) {
     return {
@@ -47,18 +45,27 @@ export async function createCourse(_prev: AdminState, formData: FormData): Promi
     };
   }
 
+  await recordAudit(supabase, await getProfile(), {
+    action: "course.create",
+    entity: "edu_courses",
+    entityId: created?.id ?? null,
+    summary: `Created course ${code} — ${title}.`,
+    detail: { code, title, credits, schedule, teacher_id: teacherId },
+  });
+
   revalidatePath("/admin");
   revalidatePath("/courses");
   return { ok: true, message: `Course ${code} created.` };
 }
 
 export async function enrollStudent(_prev: AdminState, formData: FormData): Promise<AdminState> {
-  const studentId = String(formData.get("student_id") ?? "");
-  const courseId = String(formData.get("course_id") ?? "");
+  const parsed = parseOrMessage(enrollStudentInput, {
+    studentId: formData.get("student_id") ?? "",
+    courseId: formData.get("course_id") ?? "",
+  });
+  if (!parsed.ok) return { ok: false, message: "Pick both a student and a course." };
 
-  if (!UUID.test(studentId) || !UUID.test(courseId)) {
-    return { ok: false, message: "Pick both a student and a course." };
-  }
+  const { studentId, courseId } = parsed.data;
 
   const supabase = await createClient();
   const { error } = await supabase
@@ -77,25 +84,44 @@ export async function enrollStudent(_prev: AdminState, formData: FormData): Prom
     };
   }
 
+  await recordAudit(supabase, await getProfile(), {
+    action: "enrollment.create",
+    entity: "edu_enrollments",
+    entityId: courseId,
+    summary: "Enrolled a student in a course.",
+    detail: { student_id: studentId, course_id: courseId },
+  });
+
   revalidatePath("/admin");
   return { ok: true, message: "Student enrolled." };
 }
 
 export async function assignTeacher(_prev: AdminState, formData: FormData): Promise<AdminState> {
-  const courseId = String(formData.get("course_id") ?? "");
-  const teacherId = String(formData.get("teacher_id") ?? "");
+  const parsed = parseOrMessage(assignTeacherInput, {
+    courseId: formData.get("course_id") ?? "",
+    teacherId: formData.get("teacher_id") ?? "",
+  });
+  if (!parsed.ok) return { ok: false, message: "Pick a course." };
 
-  if (!UUID.test(courseId)) return { ok: false, message: "Pick a course." };
+  const { courseId, teacherId } = parsed.data;
 
   const supabase = await createClient();
   const { error } = await supabase
     .from("edu_courses")
-    .update({ teacher_id: UUID.test(teacherId) ? teacherId : null })
+    .update({ teacher_id: teacherId })
     .eq("id", courseId);
 
   if (error) {
     return { ok: false, message: "Could not reassign the course. Please try again." };
   }
+
+  await recordAudit(supabase, await getProfile(), {
+    action: "course.assign_teacher",
+    entity: "edu_courses",
+    entityId: courseId,
+    summary: teacherId ? "Reassigned a course to a different teacher." : "Removed the teacher from a course.",
+    detail: { course_id: courseId, teacher_id: teacherId },
+  });
 
   revalidatePath("/admin");
   revalidatePath("/courses");

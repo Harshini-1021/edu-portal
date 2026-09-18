@@ -2,11 +2,11 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { buildStudentReport } from "@/lib/academics";
 import { generateInsight } from "@/lib/ai";
+import { insightRequest } from "@/lib/schemas";
+import { checkAiRateLimit } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -26,9 +26,21 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Malformed request body." }, { status: 400 });
   }
 
-  const studentId = (body as { studentId?: unknown })?.studentId;
-  if (typeof studentId !== "string" || !UUID.test(studentId)) {
-    return NextResponse.json({ error: "A valid studentId is required." }, { status: 400 });
+  const parsed = insightRequest.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: parsed.error.issues[0]?.message ?? "A valid studentId is required." },
+      { status: 400 },
+    );
+  }
+  const { studentId } = parsed.data;
+
+  const limit = await checkAiRateLimit(supabase, user.id);
+  if (!limit.allowed) {
+    return NextResponse.json(
+      { error: limit.message },
+      { status: 429, headers: { "retry-after": String(limit.retryAfterSeconds) } },
+    );
   }
 
   // RLS decides visibility: a student sees only themselves, a teacher only the

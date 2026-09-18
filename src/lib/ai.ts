@@ -1,4 +1,5 @@
 import type { StudentReport, RiskLevel } from "./types";
+import { aiInsightSchema } from "./schemas";
 
 export type AiInsight = {
   risk_level: RiskLevel;
@@ -65,7 +66,7 @@ function buildPrompt(report: StudentReport): string {
   return `${SYSTEM}\n\n<record>\n${JSON.stringify(record, null, 2)}\n</record>`;
 }
 
-function extractJson(raw: string): unknown {
+export function extractJson(raw: string): unknown {
   const trimmed = raw.trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
   try {
     return JSON.parse(trimmed);
@@ -84,44 +85,16 @@ function extractJson(raw: string): unknown {
   }
 }
 
-function str(v: unknown, fallback = ""): string {
-  return typeof v === "string" && v.trim() ? v.trim().slice(0, 800) : fallback;
-}
-
+/**
+ * The model's reply is parsed by the shared Zod contract rather than by ad-hoc
+ * type checks, so the shape guarantee is declared once in schemas.ts and holds
+ * for both providers. A reply that fails the contract returns null, and the
+ * caller moves on to the next provider instead of rendering a partial card.
+ */
 function validate(parsed: unknown, model: string): AiInsight | null {
-  if (!parsed || typeof parsed !== "object") return null;
-  const o = parsed as Record<string, unknown>;
-
-  const risk = str(o.risk_level).toLowerCase();
-  const risk_level: RiskLevel =
-    risk === "high" || risk === "medium" || risk === "low" ? (risk as RiskLevel) : "medium";
-
-  const summary = str(o.summary);
-  if (!summary) return null;
-
-  const weak = Array.isArray(o.weak_subjects)
-    ? o.weak_subjects
-        .map((w) => {
-          const x = (w ?? {}) as Record<string, unknown>;
-          return { course: str(x.course), reason: str(x.reason) };
-        })
-        .filter((w) => w.course)
-        .slice(0, 6)
-    : [];
-
-  const recs = Array.isArray(o.recommendations)
-    ? o.recommendations
-        .map((r) => {
-          const x = (r ?? {}) as Record<string, unknown>;
-          return { title: str(x.title), detail: str(x.detail) };
-        })
-        .filter((r) => r.title)
-        .slice(0, 6)
-    : [];
-
-  if (recs.length === 0) return null;
-
-  return { risk_level, summary, trend: str(o.trend), weak_subjects: weak, recommendations: recs, model };
+  const result = aiInsightSchema.safeParse(parsed);
+  if (!result.success) return null;
+  return { ...result.data, model };
 }
 
 async function callGemini(prompt: string): Promise<string> {

@@ -13,7 +13,7 @@ const GUARDED: Array<{ prefix: string; role: string }> = [
   { prefix: "/student", role: "student" },
 ];
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(

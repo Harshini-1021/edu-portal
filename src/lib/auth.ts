@@ -26,7 +26,7 @@ const HOME: Record<Role, string> = {
 
 /**
  * Page-level guard. Middleware already redirects, but pages re-check so a
- * direct render (or a middleware change) can never leak another role's screen.
+ * direct render (or a proxy change) can never leak another role's screen.
  */
 export async function requireRole(role: Role): Promise<Profile> {
   const profile = await getProfile();
