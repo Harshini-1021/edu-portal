@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { requireRole } from "@/lib/auth";
 import { buildStudentReport, fmtPct, heuristicRisk } from "@/lib/academics";
+import { TrendChart } from "@/components/charts";
 import { Card, Empty, Meter, RiskBadge, SectionTitle, Stat } from "@/components/ui";
 import AiInsightPanel from "@/components/ai-insight";
 import type { Insight } from "@/lib/types";
@@ -29,7 +30,7 @@ export default async function StudentDashboard() {
     );
   }
 
-  const [report, { data: insightRow }] = await Promise.all([
+  const [report, { data: insightRow }, { data: sessions }] = await Promise.all([
     buildStudentReport(supabase, student.id),
     supabase
       .from("edu_ai_insights")
@@ -38,7 +39,40 @@ export default async function StudentDashboard() {
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle(),
+    supabase
+      .from("edu_attendance")
+      .select("session_date, status")
+      .eq("student_id", student.id)
+      .order("session_date"),
   ]);
+
+  // Cumulative attendance after each recorded session. Cumulative rather than
+  // per-day because a single absent day is noise; what matters to a student on
+  // the edge of the 75% rule is which side of it they are drifting towards.
+  const trend = (() => {
+    const byDate = new Map<string, { weighted: number; total: number }>();
+    for (const row of sessions ?? []) {
+      const key = String(row.session_date);
+      const bucket = byDate.get(key) ?? { weighted: 0, total: 0 };
+      bucket.total += 1;
+      if (row.status === "present") bucket.weighted += 1;
+      else if (row.status === "late") bucket.weighted += 0.5;
+      byDate.set(key, bucket);
+    }
+
+    let weighted = 0;
+    let total = 0;
+    return Array.from(byDate.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, b]) => {
+        weighted += b.weighted;
+        total += b.total;
+        return {
+          label: new Date(date).toLocaleDateString("en-IN", { day: "2-digit", month: "short" }),
+          value: Math.round((weighted / total) * 1000) / 10,
+        };
+      });
+  })();
 
   const courses = report?.courses ?? [];
   const risk = heuristicRisk(
@@ -98,6 +132,14 @@ export default async function StudentDashboard() {
           value={String(pendingCount)}
           sub={missingCount > 0 ? `${missingCount} missed submission${missingCount === 1 ? "" : "s"}` : "Nothing missed"}
           tone={missingCount > 0 ? "bad" : "default"}
+        />
+      </div>
+
+      <div className="mt-6">
+        <TrendChart
+          points={trend}
+          threshold={75}
+          caption="Running attendance after each recorded session, against the 75% requirement."
         />
       </div>
 

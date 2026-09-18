@@ -70,7 +70,7 @@ function one(value: unknown): Row {
   return (value ?? {}) as Row;
 }
 
-function norm(value: string): string {
+export function norm(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
@@ -79,7 +79,7 @@ function norm(value: string): string {
 /* thing that is also correct. Every query below is RLS-scoped.                 */
 /* -------------------------------------------------------------------------- */
 
-type StudentRef = { id: string; name: string; rollNo: string; className: string };
+export type StudentRef = { id: string; name: string; rollNo: string; className: string };
 
 async function visibleStudents(supabase: SupabaseClient): Promise<StudentRef[]> {
   const { data } = await supabase
@@ -94,7 +94,7 @@ async function visibleStudents(supabase: SupabaseClient): Promise<StudentRef[]> 
   }));
 }
 
-function matchStudents(pool: StudentRef[], query: string): StudentRef[] {
+export function matchStudents(pool: StudentRef[], query: string): StudentRef[] {
   const q = norm(query);
   if (!q) return [];
   const exact = pool.filter((s) => norm(s.name) === q || norm(s.rollNo) === q);
@@ -102,7 +102,7 @@ function matchStudents(pool: StudentRef[], query: string): StudentRef[] {
   return pool.filter((s) => norm(s.name).includes(q) || q.includes(norm(s.rollNo)));
 }
 
-type CourseRef = { id: string; code: string; title: string };
+export type CourseRef = { id: string; code: string; title: string };
 
 async function visibleCourses(supabase: SupabaseClient): Promise<CourseRef[]> {
   const { data } = await supabase.from("edu_courses").select("id, code, title");
@@ -113,7 +113,7 @@ async function visibleCourses(supabase: SupabaseClient): Promise<CourseRef[]> {
   }));
 }
 
-function matchCourse(pool: CourseRef[], query: string): CourseRef[] {
+export function matchCourse(pool: CourseRef[], query: string): CourseRef[] {
   const q = norm(query);
   if (!q) return [];
   const byCode = pool.filter((c) => norm(c.code) === q);

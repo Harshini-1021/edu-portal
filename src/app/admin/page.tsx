@@ -5,6 +5,7 @@ import { buildCohortSummary, heuristicRisk } from "@/lib/academics";
 import { Card, Empty, Meter, RiskBadge, SectionTitle, Stat } from "@/components/ui";
 import { AssignTeacherForm, CreateCourseForm, EnrollForm } from "./forms";
 import CommandBar from "@/components/command-bar";
+import { DistributionBar } from "@/components/charts";
 
 export const dynamic = "force-dynamic";
 
@@ -93,7 +94,29 @@ export default async function AdminDashboard() {
       </div>
 
       <div className="mt-8">
+        <DistributionBar
+          title="Institution-wide academic risk"
+          hint="Latest AI verdict where one exists, otherwise the rule-based band"
+          bars={[
+            { key: "high", label: "High risk", count: rows.filter((r) => (r.ai ?? r.computed) === "high").length },
+            { key: "medium", label: "Medium", count: rows.filter((r) => (r.ai ?? r.computed) === "medium").length },
+            { key: "low", label: "Low", count: rows.filter((r) => (r.ai ?? r.computed) === "low").length },
+            { key: "unknown", label: "No data", count: rows.filter((r) => (r.ai ?? r.computed) === "unknown").length },
+          ]}
+        />
+      </div>
+
+      <div className="mt-8">
         <CommandBar role="admin" />
+      </div>
+
+      <div className="mt-4">
+        <Link
+          href="/admin/audit"
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-indigo-600 hover:underline"
+        >
+          View the audit trail →
+        </Link>
       </div>
 
       <div className="mt-10">
