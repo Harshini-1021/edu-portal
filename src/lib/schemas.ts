@@ -188,3 +188,61 @@ export function parseOrMessage<T extends z.ZodType>(
     ? { ok: true, data: result.data }
     : { ok: false, message: firstIssue(result.error) };
 }
+
+/* -------------------------------------------------------------------------- */
+/* AI command bar                                                              */
+/* -------------------------------------------------------------------------- */
+
+export const commandRequest = z.object({
+  utterance: z
+    .string()
+    .trim()
+    .min(3, "Say what you would like to do.")
+    .max(300, "That instruction is too long — try a shorter one."),
+});
+
+/**
+ * What the model is allowed to propose. This is the security boundary of the
+ * command bar: the model never sees a credential, never touches the database,
+ * and cannot invent an operation. It returns one of these shapes or nothing,
+ * and the server resolves the names to ids itself under the caller's own RLS.
+ *
+ * A plan is a *proposal*. Nothing in this union is executed on the strength of
+ * the model's say-so — read actions run immediately because they can only ever
+ * return rows the caller is already allowed to see, and the single write action
+ * is previewed and must be confirmed by the user before it runs.
+ */
+export const commandPlan = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("find_students"),
+    maxAttendancePct: z.number().min(0).max(100).nullish(),
+    maxScorePct: z.number().min(0).max(100).nullish(),
+    courseCode: z.string().trim().max(20).nullish(),
+    className: z.string().trim().max(40).nullish(),
+  }),
+  z.object({
+    action: z.literal("student_performance"),
+    studentName: z.string().trim().min(1).max(80),
+  }),
+  z.object({
+    action: z.literal("update_mark"),
+    studentName: z.string().trim().min(1).max(80),
+    courseCode: z.string().trim().min(2).max(20),
+    assessmentTitle: z.string().trim().max(120).nullish(),
+    newScore: z.number().min(0),
+  }),
+  z.object({
+    action: z.literal("unsupported"),
+    reason: z.string().trim().max(300).catch("That instruction is not supported."),
+  }),
+]);
+
+export type CommandPlan = z.infer<typeof commandPlan>;
+
+/** The confirmed write the browser sends back. Re-validated, never trusted. */
+export const confirmWrite = z.object({
+  studentId: uuid,
+  assessmentId: uuid,
+  newScore: z.number().min(0),
+  utterance: z.string().trim().max(300),
+});

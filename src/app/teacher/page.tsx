@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireRole } from "@/lib/auth";
 import { buildCohortSummary, fmtPct, heuristicRisk } from "@/lib/academics";
 import { Card, Empty, Meter, RiskBadge, SectionTitle, Stat } from "@/components/ui";
+import CommandBar from "@/components/command-bar";
 
 export const dynamic = "force-dynamic";
 
@@ -92,6 +93,10 @@ export default async function TeacherHome() {
           sub={atRisk > 0 ? "Needs intervention" : "None flagged"}
           tone={atRisk > 0 ? "bad" : "good"}
         />
+      </div>
+
+      <div className="mt-8">
+        <CommandBar role="teacher" />
       </div>
 
       <div className="mt-10">

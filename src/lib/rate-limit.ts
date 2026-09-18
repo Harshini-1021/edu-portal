@@ -45,3 +45,37 @@ export async function checkAiRateLimit(
     message: `You have generated ${AI_LIMIT} analyses in the last ${AI_WINDOW_MINUTES} minutes. Try again in ${Math.ceil(retryAfterSeconds / 60)} minute(s).`,
   };
 }
+
+export const COMMAND_LIMIT = 15;
+
+/**
+ * Rate limit for the command bar, counted from the audit trail. Every command —
+ * read or write — writes an audit row, so the trail doubles as the counter and
+ * there is no second source of truth to keep in sync.
+ */
+export async function checkCommandRateLimit(
+  supabase: SupabaseClient,
+  actorId: string,
+): Promise<RateVerdict> {
+  const since = new Date(Date.now() - AI_WINDOW_MINUTES * 60_000).toISOString();
+
+  const { data, error } = await supabase
+    .from("edu_audit_log")
+    .select("created_at")
+    .eq("actor_id", actorId)
+    .eq("source", "ai_command")
+    .gte("created_at", since)
+    .order("created_at", { ascending: true });
+
+  if (error || !data) return { allowed: true };
+  if (data.length < COMMAND_LIMIT) return { allowed: true };
+
+  const freeAt = new Date(data[0].created_at).getTime() + AI_WINDOW_MINUTES * 60_000;
+  const retryAfterSeconds = Math.max(1, Math.ceil((freeAt - Date.now()) / 1000));
+
+  return {
+    allowed: false,
+    retryAfterSeconds,
+    message: `You have run ${COMMAND_LIMIT} commands in the last ${AI_WINDOW_MINUTES} minutes. Try again shortly.`,
+  };
+}

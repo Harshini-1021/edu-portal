@@ -174,3 +174,28 @@ export async function generateInsight(
 
   return { insight: null, errors };
 }
+
+/**
+ * Generic JSON completion used by features other than the insight card (the
+ * command bar in particular). Same provider ladder, same timeout: Gemini first,
+ * Groq when Gemini fails or rate-limits. Returns the raw text plus the model
+ * that produced it, or null when both providers are unreachable.
+ *
+ * Parsing and validation are deliberately left to the caller, because each
+ * feature has its own output contract in schemas.ts.
+ */
+export async function completeJson(
+  prompt: string,
+): Promise<{ raw: string; model: string } | null> {
+  for (const [name, call] of [
+    [GEMINI_MODEL, callGemini],
+    [GROQ_MODEL, callGroq],
+  ] as const) {
+    try {
+      return { raw: await call(prompt), model: name };
+    } catch {
+      // Fall through to the next provider.
+    }
+  }
+  return null;
+}

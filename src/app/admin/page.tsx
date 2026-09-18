@@ -4,6 +4,7 @@ import { requireRole } from "@/lib/auth";
 import { buildCohortSummary, heuristicRisk } from "@/lib/academics";
 import { Card, Empty, Meter, RiskBadge, SectionTitle, Stat } from "@/components/ui";
 import { AssignTeacherForm, CreateCourseForm, EnrollForm } from "./forms";
+import CommandBar from "@/components/command-bar";
 
 export const dynamic = "force-dynamic";
 
@@ -89,6 +90,10 @@ export default async function AdminDashboard() {
           sub={`${medium} medium · ${rows.length - high - medium} low`}
           tone={high > 0 ? "bad" : "good"}
         />
+      </div>
+
+      <div className="mt-8">
+        <CommandBar role="admin" />
       </div>
 
       <div className="mt-10">
