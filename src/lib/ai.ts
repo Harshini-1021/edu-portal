@@ -19,7 +19,7 @@ const GROQ_MODEL = "llama-3.3-70b-versatile";
  * entire point of having one. A 22s budget under a 10s platform timeout meant
  * the function was killed before the second provider was ever tried.
  */
-const TIMEOUT_MS = 12_000;
+const TIMEOUT_MS = 8_000;
 
 const SYSTEM = `You are an academic performance analyst for a college portal.
 You will receive one student's academic record as JSON inside <record> tags.
@@ -228,4 +228,57 @@ export async function completeJson(
     }
   }
   return null;
+}
+
+
+export type ProviderHealth = {
+  model: string;
+  vendor: "gemini" | "groq";
+  /** Whether the key for this vendor is present at all. */
+  configured: boolean;
+  ok: boolean;
+  ms: number;
+  /** Error code only — never a key, a URL with a key, or a response body. */
+  error?: string;
+};
+
+/**
+ * Pings every rung of the ladder with a trivial prompt and reports what came
+ * back. Deliberately reports only booleans and short error codes: this endpoint
+ * exists to distinguish "key missing" from "rate limited" from "slow", and none
+ * of those answers require revealing a secret.
+ */
+export async function probeProviders(): Promise<ProviderHealth[]> {
+  const prompt = 'Reply with exactly {"ok":true} and nothing else.';
+
+  return Promise.all(
+    ladder().map(async (rung) => {
+      const vendor: "gemini" | "groq" = rung.model.startsWith("gemini") ? "gemini" : "groq";
+      const configured = Boolean(
+        vendor === "gemini" ? process.env.GEMINI_API_KEY : process.env.GROQ_API_KEY,
+      );
+
+      if (!configured) {
+        return { model: rung.model, vendor, configured, ok: false, ms: 0, error: "key_missing" };
+      }
+
+      const started = Date.now();
+      try {
+        await rung.call(prompt);
+        return { model: rung.model, vendor, configured, ok: true, ms: Date.now() - started };
+      } catch (err) {
+        const raw = err instanceof Error ? err.message : "failed";
+        // Message is one of our own codes (e.g. "gemini-flash-latest_429") or an
+        // abort. Trim to a short token so nothing incidental leaks.
+        return {
+          model: rung.model,
+          vendor,
+          configured,
+          ok: false,
+          ms: Date.now() - started,
+          error: raw.slice(0, 60),
+        };
+      }
+    }),
+  );
 }
