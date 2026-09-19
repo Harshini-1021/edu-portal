@@ -10,9 +10,16 @@ export type AiInsight = {
   model: string;
 };
 
-const GEMINI_MODEL = "gemini-flash-latest";
+const GEMINI_MODELS = ["gemini-flash-latest", "gemini-3.1-flash-lite"] as const;
 const GROQ_MODEL = "llama-3.3-70b-versatile";
-const TIMEOUT_MS = 22_000;
+
+/**
+ * Per-provider budget, deliberately well under the route's maxDuration so a
+ * slow first provider still leaves room for the fallback to run — which is the
+ * entire point of having one. A 22s budget under a 10s platform timeout meant
+ * the function was killed before the second provider was ever tried.
+ */
+const TIMEOUT_MS = 12_000;
 
 const SYSTEM = `You are an academic performance analyst for a college portal.
 You will receive one student's academic record as JSON inside <record> tags.
@@ -97,13 +104,12 @@ function validate(parsed: unknown, model: string): AiInsight | null {
   return { ...result.data, model };
 }
 
-async function callGemini(prompt: string): Promise<string> {
+async function callGemini(prompt: string, model: string): Promise<string> {
   const key = process.env.GEMINI_API_KEY;
   if (!key) throw new Error("GEMINI_API_KEY missing");
 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
-    {
+  const send = () =>
+    fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
       method: "POST",
       headers: { "content-type": "application/json", "x-goog-api-key": key },
       body: JSON.stringify({
@@ -111,15 +117,22 @@ async function callGemini(prompt: string): Promise<string> {
         generationConfig: { temperature: 0.4, responseMimeType: "application/json" },
       }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
-    },
-  );
+    });
 
-  if (!res.ok) {
-    throw new Error(`gemini_${res.status}`);
+  let res = await send();
+
+  // A 429 on the free tier is usually a per-minute burst rather than a hard
+  // quota. One short backoff recovers it far more often than falling straight
+  // through to another vendor.
+  if (res.status === 429) {
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    res = await send();
   }
+
+  if (!res.ok) throw new Error(`${model}_${res.status}`);
   const json = await res.json();
   const text = json?.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (typeof text !== "string") throw new Error("gemini_empty");
+  if (typeof text !== "string") throw new Error(`${model}_empty`);
   return text;
 }
 
@@ -146,6 +159,25 @@ async function callGroq(prompt: string): Promise<string> {
   return text;
 }
 
+type Rung = { model: string; call: (prompt: string) => Promise<string> };
+
+/**
+ * Ordered provider fallback. Two Gemini models come before Groq because a
+ * second model on the same key recovers from a burst limit or a model-specific
+ * fault without depending on a second vendor's key being present and its model
+ * id still being current — which is exactly how a single-vendor fallback
+ * quietly stops working months after it was wired up.
+ */
+function ladder(): Rung[] {
+  return [
+    ...GEMINI_MODELS.map((model) => ({
+      model,
+      call: (prompt: string) => callGemini(prompt, model),
+    })),
+    { model: GROQ_MODEL, call: callGroq },
+  ];
+}
+
 /**
  * Gemini first, Groq on any failure (429 rate limits especially). Each provider
  * gets one parse attempt plus a repair pass. Returns null only when both
@@ -158,17 +190,16 @@ export async function generateInsight(
   const prompt = buildPrompt(report);
   const errors: string[] = [];
 
-  for (const [name, call] of [
-    [GEMINI_MODEL, callGemini],
-    [GROQ_MODEL, callGroq],
-  ] as const) {
+  for (const rung of ladder()) {
     try {
-      const raw = await call(prompt);
-      const insight = validate(extractJson(raw), name);
+      const raw = await rung.call(prompt);
+      const insight = validate(extractJson(raw), rung.model);
       if (insight) return { insight, errors };
-      errors.push(`${name}: unparseable response`);
+      errors.push(`${rung.model}: unparseable response`);
     } catch (err) {
-      errors.push(`${name}: ${err instanceof Error ? err.message : "failed"}`);
+      const message = err instanceof Error ? err.message : "failed";
+      console.error(`[ai] ${rung.model} failed: ${message}`);
+      errors.push(`${rung.model}: ${message}`);
     }
   }
 
@@ -187,14 +218,13 @@ export async function generateInsight(
 export async function completeJson(
   prompt: string,
 ): Promise<{ raw: string; model: string } | null> {
-  for (const [name, call] of [
-    [GEMINI_MODEL, callGemini],
-    [GROQ_MODEL, callGroq],
-  ] as const) {
+  for (const rung of ladder()) {
     try {
-      return { raw: await call(prompt), model: name };
-    } catch {
-      // Fall through to the next provider.
+      return { raw: await rung.call(prompt), model: rung.model };
+    } catch (err) {
+      console.error(
+        `[ai] ${rung.model} failed: ${err instanceof Error ? err.message : "failed"}`,
+      );
     }
   }
   return null;

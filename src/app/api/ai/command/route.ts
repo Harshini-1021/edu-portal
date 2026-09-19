@@ -9,6 +9,10 @@ import { checkCommandRateLimit } from "@/lib/rate-limit";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+// The provider ladder can try three models. Vercel's default cap would kill
+// the function mid-ladder, so the fallback would never actually run.
+export const maxDuration = 60;
+
 /**
  * Turns one English instruction into a proposed action.
  *
