@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireRole } from "@/lib/auth";
 import { buildStudentReport, fmtPct, heuristicRisk } from "@/lib/academics";
 import { TrendChart } from "@/components/charts";
+import WhatIfPanel from "@/components/what-if";
 import { Card, Empty, Meter, RiskBadge, SectionTitle, Stat } from "@/components/ui";
 import AiInsightPanel from "@/components/ai-insight";
 import type { Insight } from "@/lib/types";
@@ -132,6 +133,21 @@ export default async function StudentDashboard() {
           value={String(pendingCount)}
           sub={missingCount > 0 ? `${missingCount} missed submission${missingCount === 1 ? "" : "s"}` : "Nothing missed"}
           tone={missingCount > 0 ? "bad" : "default"}
+        />
+      </div>
+
+      <div className="mt-6">
+        <WhatIfPanel
+          courses={courses.map((c) => ({
+            code: c.code,
+            title: c.title,
+            earned: c.earned,
+            possible: c.possible,
+            remainingMax: c.pendingMax,
+            present: c.present,
+            late: c.late,
+            absent: c.absent,
+          }))}
         />
       </div>
 

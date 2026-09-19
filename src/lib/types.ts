@@ -49,6 +49,8 @@ export type CourseReport = {
   possible: number;
   graded: number;
   pending: number;
+  /** Marks still available from assessments that have not been evaluated. */
+  pendingMax: number;
   missing: number;
   /** null when no session has been recorded — render as "—". */
   attendancePct: number | null;

@@ -74,6 +74,7 @@ export async function buildStudentReport(
     let possible = 0;
     let graded = 0;
     let pending = 0;
+    let pendingMax = 0;
     let missing = 0;
     for (const s of mine as Row[]) {
       const a = one(s.edu_assessments);
@@ -87,6 +88,7 @@ export async function buildStudentReport(
         missing += 1;
       } else {
         pending += 1;
+        pendingMax += max;
       }
     }
 
@@ -108,6 +110,7 @@ export async function buildStudentReport(
       possible,
       graded,
       pending,
+      pendingMax,
       missing,
       attendancePct: pct(present + late * 0.5, sessions),
       present,
